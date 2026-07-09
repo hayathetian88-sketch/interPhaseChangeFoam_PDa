@@ -11,7 +11,7 @@
                 IOobject::NO_READ,  
                 IOobject::NO_WRITE  
             ),
-            fvc::interpolate(slipcoeff) * phis 
+            fvc::interpolate(slipcoeff) * phis * pos0(0.99 - fvc::interpolate(alpha1))
         );
 
     surfaceScalarField phir("phir", phic*interface.nHatf());
