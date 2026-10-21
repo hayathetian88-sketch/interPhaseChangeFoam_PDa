@@ -9,8 +9,6 @@
         phic += (interface.cAlpha()*icAlpha)*fvc::interpolate(mag(U));
     }
 
-    surfaceScalarField phis(fvc::flux(Vgj));
-
     volScalarField divU
     (
         mesh.moving()
@@ -50,6 +48,5 @@
     {
         #include "alphaEqn.H"
     }
-
     rho == alpha1*rho1 + alpha2*rho2;
 }

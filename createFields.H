@@ -122,21 +122,105 @@ else
     yn = y.y();
 }
 
-volVectorField Vgj(
-    IOobject(
-        "Vgj",
+// DEBUG
+volScalarField slipDensityCorr
+(
+    IOobject
+    (
+        "slipDensityCorr",
         runTime.timeName(),
         mesh,
         IOobject::NO_READ,
         IOobject::AUTO_WRITE
     ),
     mesh,
-    dimensionedVector("zero", dimVelocity, vector::zero)
+    dimensionedScalar("slipDensityCorr", dimless/dimTime, 0.0) // 次元は [1/s]
 );
+
+
+volScalarField vDotvmcAlphal
+(
+    IOobject
+    (
+        "vDotvmcAlphal",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh,
+    dimensionedScalar("vDotvmcAlphal", dimless/dimTime, 0.0) // 次元は [1/s]
+);
+volScalarField vDotvAlphal
+(
+    IOobject
+    (
+        "vDotvAlphal",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh,
+    dimensionedScalar("vDotvAlphal", dimless/dimTime, 0.0) // 次元は [1/s]
+);
+volScalarField vDotcAlphal
+(
+    IOobject
+    (
+        "vDotcAlphal",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh,
+    dimensionedScalar("vDotcAlphal", dimless/dimTime, 0.0) // 次元は [1/s]
+);
+volScalarField vDotcP
+(
+    IOobject
+    (
+        "vDotcP",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE // 時間ディレクトリに出力
+    ),
+    mesh,
+    dimensionedScalar("vDotcP", dimless/dimTime/dimPressure, 0.0) // 次元は [1/(Pa・s)]
+);
+volScalarField vDotvP
+(
+    IOobject
+    (
+        "vDotvP",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE // 時間ディレクトリに出力
+    ),
+    mesh,
+    dimensionedScalar("vDotvP", dimless/dimTime/dimPressure, 0.0) // 次元は [1/(Pa・s)]
+);
+volScalarField pslipdiv
+(
+    IOobject
+    (
+        "pslipdiv",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE // 時間ディレクトリに出力
+    ),
+    mesh,
+    dimensionedScalar("pslipdiv", dimless/dimTime, 0.0) // 次元は [1/(Pa・s)]
+);
+//
 
 const dimensionSet dimStress(dimMass/dimLength/sqr(dimTime));
 
-volSymmTensorField taus
+volVectorField taus
 (
     IOobject
     (
@@ -147,7 +231,7 @@ volSymmTensorField taus
         IOobject::AUTO_WRITE
     ),
     mesh,
-    dimensionedSymmTensor("taus", dimStress, symmTensor::zero)
+    dimensionedVector("taus", dimForce/dimVolume, vector::zero)
 );
 
 const dimensionSet revdimlength(dimless/dimLength);
@@ -180,27 +264,11 @@ volVectorField Vs
     mesh
 );
 
-const dimensionSet revdimtime(dimless/dimTime);
-
-volScalarField time_coeff
+volVectorField Vv
 (
     IOobject
     (
-        "time_coeff",
-        runTime.timeName(),
-        mesh,
-        IOobject::NO_READ,
-        IOobject::AUTO_WRITE
-    ),
-    mesh,
-    dimensionedScalar("zero", revdimtime, 0.0)
-);
-
-volVectorField Vt
-(
-    IOobject
-    (
-        "Vt",
+        "Vv",
         runTime.timeName(),
         mesh,
         IOobject::NO_READ,
@@ -210,33 +278,6 @@ volVectorField Vt
     dimensionedVector("zero", dimVelocity, vector::zero)
 );
 
-volVectorField Vg
-(
-    IOobject
-    (
-        "Vg",
-        runTime.timeName(),
-        mesh,
-        IOobject::NO_READ,
-        IOobject::NO_WRITE
-    ),
-    mesh,
-    dimensionedVector("zero", dimVelocity, vector::zero)
-);
-
-volScalarField slipcoeff
-(
-    IOobject
-    (
-        "slipcoeff",
-        runTime.timeName(),
-        mesh,
-        IOobject::NO_READ,
-        IOobject::NO_WRITE
-    ),
-    mesh,
-    dimensionedScalar("zero", dimless, 0.0)
-);
 
 volVectorField pcoeff
 (

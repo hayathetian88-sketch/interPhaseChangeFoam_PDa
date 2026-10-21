@@ -1,30 +1,26 @@
 {
     word alphaScheme("div(phi,alpha)");
     word alpharScheme("div(phirb,alpha)");
-    const surfaceScalarField slipPhis
-        (
-            IOobject
-            (
-                "slipPhis",
-                runTime.timeName(),
-                mesh,
-                IOobject::NO_READ,  
-                IOobject::NO_WRITE  
-            ),
-            fvc::interpolate(slipcoeff) * phis * pos0(0.99 - fvc::interpolate(alpha1))
-        );
 
     surfaceScalarField phir("phir", phic*interface.nHatf());
+    surfaceScalarField phiVs("phiVs", fvc::flux(Vs));
+    forAll(phiVs.boundaryField(), patchi)
+    {
+        if (!mesh.boundary()[patchi].coupled())
+        {
+            phiVs.boundaryFieldRef()[patchi] = 0.0;
+        }
+    }
+    surfaceScalarField phiVsAlpha2("phiVsAlpha2", phiVs*fvc::interpolate(alpha2));
 
-    Pair<tmp<volScalarField>> vDotAlphal =
-        mixture->vDotAlphal();
-    const volScalarField& vDotcAlphal = vDotAlphal[0]();
-    const volScalarField& vDotvAlphal = vDotAlphal[1]();
-    const volScalarField vDotvmcAlphal(vDotvAlphal - vDotcAlphal);
+    slipDensityCorr = alpha1*alpha2*((rho1-rho2)/rho)*(fvc::grad(alpha1) & Vs);
+
+    Pair<tmp<volScalarField>> vDotAlphal = mixture->vDotAlphal();
+    vDotcAlphal = vDotAlphal[0]();
+    vDotvAlphal = vDotAlphal[1]();
+    vDotvmcAlphal = vDotvAlphal - vDotcAlphal;
 
     tmp<surfaceScalarField> talphaPhi;
-
-    //volScalarField divUeff = divU - fvc::div(slipPhis);
 
     if (MULESCorr)
     {
@@ -41,15 +37,19 @@
           - fv::gaussConvectionScheme<scalar>
             (
                 mesh,
-                slipPhis,
-                upwind<scalar>(mesh, slipPhis)
-            ).fvmDiv(slipPhis, alpha1)
+                phiVsAlpha2,
+                linear<scalar>(mesh)
+            ).fvmDiv(phiVsAlpha2, alpha1)
          ==
             fvm::Sp(vDotvmcAlphal, alpha1)
           + vDotcAlphal
+          - slipDensityCorr
         );
 
         alpha1Eqn.solve();
+
+        Info<< "slipDensityCorr Min = " << min(slipDensityCorr).value()
+            << "  Max = " << max(slipDensityCorr).value() << nl;
 
         Info<< "Phase-1 volume fraction = "
             << alpha1.weightedAverage(mesh.Vsc()).value()
@@ -64,31 +64,12 @@
 
     for (int aCorr=0; aCorr<nAlphaCorr; aCorr++)
     {
-        
-
         tmp<surfaceScalarField> talphaPhiCorr
         (
-            fvc::flux
-            (
-                phi,
-                alpha1,
-                alphaScheme
-            )
-          + fvc::flux
-            (
-                -fvc::flux(-phir, alpha2, alpharScheme),
-                alpha1,
-                alpharScheme
-            )
-          - fvc::flux
-            (
-                slipPhis,
-                alpha1,
-                alphaScheme
-            )
+            fvc::flux(phi, alpha1, alphaScheme)
+          + fvc::flux(-fvc::flux(-phir, alpha2, alpharScheme), alpha1, alpharScheme)
+          - phiVsAlpha2*fvc::interpolate(alpha1) 
         );
-
-        
 
         if (MULESCorr)
         {
@@ -109,10 +90,9 @@
                   - vDotvmcAlphal*alpha10
                 )(),
                 oneField(),
-                zeroField()
+                UniformField<scalar>(1e-3)
             );
 
-            // Under-relax the correction for all but the 1st corrector
             if (aCorr == 0)
             {
                 talphaPhi.ref() += talphaPhiCorr();
@@ -132,27 +112,38 @@
                 phi,
                 talphaPhiCorr.ref(),
                 vDotvmcAlphal,
-                (divU*alpha1 + vDotcAlphal
-                )(),
+                (divU*alpha1 + vDotcAlphal-slipDensityCorr)(),
                 oneField(),
-                zeroField()
+                UniformField<scalar>(1e-3)
             );
 
             talphaPhi = talphaPhiCorr;
         }
-        alpha1 = (min(max(alpha1, scalar(0)), scalar(1)));
 
+        Info<< "Liquid phase volume fraction = "
+            << alpha1.weightedAverage(mesh.V()).value()
+            << "  Min(" << alpha1.name() << ") = " << min(alpha1).value()
+            << "  Max(" << alpha1.name() << ") = " << max(alpha1).value()
+            << endl;
+
+        alpha1 = (min(max(alpha1, scalar(1e-3)), scalar(1)));
         alpha2 = 1.0 - alpha1;
     }
 
     rhoPhi = talphaPhi()*(rho1 - rho2) + phi*rho2;
-
-    // Cache alphaPhi
     alphaPhi10 = talphaPhi();
 
-    Info<< "Liquid phase volume fraction = "
+    Info<< "slipDensityCorr Min = " << min(slipDensityCorr).value()
+        << "  Max = " << max(slipDensityCorr).value() << nl
+        << "Liquid phase volume fraction = "
         << alpha1.weightedAverage(mesh.V()).value()
         << "  Min(" << alpha1.name() << ") = " << min(alpha1).value()
         << "  Max(" << alpha1.name() << ") = " << max(alpha1).value()
+        << endl;
+
+    Info<< "vDotvmcAlphal Min = " << min(vDotvmcAlphal).value()
+        << "  Max = " << max(vDotvmcAlphal).value() << nl
+        << "vDotcAlphal     Min = " << min(vDotcAlphal).value()
+        << "  Max = " << max(vDotcAlphal).value() << nl
         << endl;
 }

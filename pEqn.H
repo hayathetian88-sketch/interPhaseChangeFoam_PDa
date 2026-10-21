@@ -1,7 +1,14 @@
 {
     volVectorField pslipcoeff = pcoeff * limitedAlpha1 * (1 - limitedAlpha1);
     surfaceScalarField pslipf("pslipf",fvc::flux(pslipcoeff));
-    volScalarField pslipdiv = fvc::div(pslipf)*pos0(0.99-alpha1);
+    forAll(pslipf.boundaryField(), patchi)
+    {
+        if (!mesh.boundary()[patchi].coupled())
+        {
+            pslipf.boundaryFieldRef()[patchi] = 0.0;
+        }
+    }
+    pslipdiv = fvc::div(pslipf);
     Info<< "pslipdiv magnitude min: " 
     << min(pslipdiv).value() << " , max: "
     << max(pslipdiv).value() << nl << endl;
@@ -31,8 +38,8 @@
     constrainPressure(p_rgh, U, phiHbyA, rAUf);
 
     Pair<tmp<volScalarField>> vDotP = mixture->vDotP();
-    const volScalarField& vDotcP = vDotP[0]();
-    const volScalarField& vDotvP = vDotP[1]();
+    vDotcP = vDotP[0]();
+    vDotvP = vDotP[1]();
 
     while (pimple.correctNonOrthogonal())
     {
