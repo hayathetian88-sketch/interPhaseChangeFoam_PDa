@@ -1,6 +1,6 @@
 {
     volVectorField pslipcoeff = pcoeff * limitedAlpha1 * (1 - limitedAlpha1);
-    surfaceScalarField pslipf("pslipf",fvc::flux(pslipcoeff));
+    pslipf = fvc::flux(pslipcoeff);
     forAll(pslipf.boundaryField(), patchi)
     {
         if (!mesh.boundary()[patchi].coupled())

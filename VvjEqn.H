@@ -11,28 +11,49 @@ volScalarField limitedAlpha1
     mesh,
     dimensionedScalar("limitedAlpha1Value", dimless, 0.0)
 );
+
 limitedAlpha1 = min(max(alpha1, scalar(1e-12)), scalar(1));
 
 tmp<volScalarField> tRb = mixture->rRb(limitedAlpha1);
 rRb = tRb();
-Info<< "rRb magnitude min: " 
-    << min(rRb).value() << " , max: "
-    << max(rRb).value() << nl << endl;
-
 const dimensionedScalar& nu = mixture->nuw(); 
 const dimensionedScalar& kd = mixture->kd();
 const dimensionedScalar& kw = mixture->kw();
 
 volVectorField gradp = fvc::grad(p_rgh);
-volScalarField Re_b = (2.0 / rRb) * mag(Vs) / nu;
-volScalarField kd_dynamic = 24.0 * (1.0 + 0.15 * pow(max(Re_b, scalar(1e-5)), 0.687))*pow(limitedAlpha1,-0.5);
 
-Vs = (-16.0/3.0) / (rRb*rRb*rho1*nu*kd_dynamic)*gradp;
+volScalarField S0
+(
+    "S0",
+    (2.0/9.0)*sqrt(limitedAlpha1)*mag(gradp)/(sqr(rRb)*rho1*nu)
+);
+volScalarField a("a", 2.0/(rRb*nu));      // Re_b = a*s
 
-Info<< "Vs magnitude min: " 
-    << min(mag(Vs)).value() << " , max: "
-    << max(mag(Vs)).value() << nl << endl;
+volScalarField s("s", S0);
+for (int i = 0; i < 6; i++)
+{
+    volScalarField pw("pw", pow(a*s, 0.687));
+    s -= (s*(1.0 + 0.15*pw) - S0)/(1.0 + 0.15*1.687*pw);
+    s = max(s, dimensionedScalar("zero", dimVelocity, 0.0));
+}
 
-pcoeff = ((rho1 - rho2) / rho) * Vs;
+// 収束の確認（相対残差）
+Info<< "Vs Newton max rel. residual = "
+    << gMax(((mag(s*(1.0 + 0.15*pow(a*s, 0.687)) - S0))
+            /(S0 + dimensionedScalar("sm", dimVelocity, SMALL)))().primitiveField())
+    << endl;
 
-Info<< "VvjEqn end" << endl;
+// Vs = -Ks*gradp（Ks は p式を陰的にするときにも使える）
+volScalarField Ks
+(
+    "Ks",
+    s/(mag(gradp) + dimensionedScalar("g", gradp.dimensions(), SMALL))
+);
+Vs = -Ks*gradp;
+
+pcoeff = ((rho1 - rho2)/rho)*Vs;
+
+Reb = (2.0/rRb)*mag(Vs)/nu;
+
+Info<< "Re_b min = " << min(Reb).value()
+    << "  max = " << max(Reb).value() << endl;

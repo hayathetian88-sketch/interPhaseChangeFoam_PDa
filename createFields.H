@@ -278,6 +278,42 @@ volVectorField Vv
     dimensionedVector("zero", dimVelocity, vector::zero)
 );
 
+const dimensionSet revdimtime(dimless/dimTime);
+
+volScalarField time_coeff
+(
+    IOobject
+    (
+        "time_coeff",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh,
+    dimensionedScalar("zero", revdimtime, 0.0)
+);
+
+volVectorField Vt
+(
+    IOobject
+    (
+        "Vt",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh,
+    dimensionedVector("zero", dimVelocity, vector::zero)
+);
+
+surfaceScalarField pslipf
+   (
+       IOobject("pslipf", runTime.timeName(), mesh, IOobject::NO_READ, IOobject::NO_WRITE),
+       mesh,
+       dimensionedScalar(phi.dimensions(), 0)
+   );
 
 volVectorField pcoeff
 (
@@ -291,6 +327,13 @@ volVectorField pcoeff
     ),
     mesh,
     dimensionedVector("zero", dimVelocity, vector::zero)
+);
+
+volScalarField Reb
+(
+    IOobject("Reb", runTime.timeName(), mesh, IOobject::NO_READ, IOobject::AUTO_WRITE),
+    mesh,
+    dimensionedScalar("Reb", dimless, 0.0)
 );
 
 

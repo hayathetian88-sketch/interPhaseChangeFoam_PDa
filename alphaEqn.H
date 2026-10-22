@@ -3,6 +3,22 @@
     word alpharScheme("div(phirb,alpha)");
 
     surfaceScalarField phir("phir", phic*interface.nHatf());
+
+    // 体積平均速度 j のフラックス。
+    // pslipf は pEqn.H で作ったものをそのまま使う（ここで作り直さない）。
+    // pEqn は div(phi) + pslipdiv = D を解いているので、div(phij) = D になる。
+    surfaceScalarField phij("phij", phi + pslipf);
+    volScalarField divUj
+    (
+        "divUj",
+        mesh.moving()
+      ? fvc::div(phij + mesh.phi())
+      : fvc::div(phij)
+    );
+
+    
+
+    // スリップ流束 alpha1*alpha2*Vs 用（壁は0、processor境界は残す）
     surfaceScalarField phiVs("phiVs", fvc::flux(Vs));
     forAll(phiVs.boundaryField(), patchi)
     {
@@ -13,43 +29,55 @@
     }
     surfaceScalarField phiVsAlpha2("phiVsAlpha2", phiVs*fvc::interpolate(alpha2));
 
-    slipDensityCorr = alpha1*alpha2*((rho1-rho2)/rho)*(fvc::grad(alpha1) & Vs);
+    // alpha1 をスリップで運ぶ実効フラックス（液相は j に対して -alpha2*Vs で動く）。
+    // upwind の向きはこの符号で決める。
+    surfaceScalarField phiSlipAdv("phiSlipAdv", -phiVsAlpha2);
 
     Pair<tmp<volScalarField>> vDotAlphal = mixture->vDotAlphal();
     vDotcAlphal = vDotAlphal[0]();
     vDotvAlphal = vDotAlphal[1]();
     vDotvmcAlphal = vDotvAlphal - vDotcAlphal;
 
+    {
+        const scalar dt = runTime.deltaTValue();
+        auto co = [&](const surfaceScalarField& f)
+        {
+            return 0.5*gMax(fvc::surfaceSum(mag(f))().primitiveField()/mesh.V().field())*dt;
+        };
+        Info<< "Co(phi) = " << co(phi)
+            << "  Co(phij) = " << co(phij)
+            << "  Co(slip) = " << co(phiVsAlpha2)
+            << "  max|Vs| = " << gMax(mag(Vs.primitiveField()))
+            << "  max|divUj| = " << gMax(mag(divUj.primitiveField())) << endl;
+    }
+
     tmp<surfaceScalarField> talphaPhi;
 
     if (MULESCorr)
     {
+        // 予測子: 対流・スリップとも upwind（有界な予測解を作る）
         fvScalarMatrix alpha1Eqn
         (
             fv::EulerDdtScheme<scalar>(mesh).fvmDdt(alpha1)
           + fv::gaussConvectionScheme<scalar>
             (
                 mesh,
-                phi,
-                upwind<scalar>(mesh, phi)
-            ).fvmDiv(phi, alpha1)
-          - fvm::Sp(divU, alpha1)
-          - fv::gaussConvectionScheme<scalar>
+                phij,
+                upwind<scalar>(mesh, phij)
+            ).fvmDiv(phij, alpha1)
+          - fvm::Sp(divUj, alpha1)
+          + fv::gaussConvectionScheme<scalar>
             (
                 mesh,
-                phiVsAlpha2,
-                linear<scalar>(mesh)
-            ).fvmDiv(phiVsAlpha2, alpha1)
+                phiSlipAdv,
+                upwind<scalar>(mesh, phiSlipAdv)
+            ).fvmDiv(phiSlipAdv, alpha1)
          ==
             fvm::Sp(vDotvmcAlphal, alpha1)
           + vDotcAlphal
-          - slipDensityCorr
         );
 
         alpha1Eqn.solve();
-
-        Info<< "slipDensityCorr Min = " << min(slipDensityCorr).value()
-            << "  Max = " << max(slipDensityCorr).value() << nl;
 
         Info<< "Phase-1 volume fraction = "
             << alpha1.weightedAverage(mesh.Vsc()).value()
@@ -64,11 +92,12 @@
 
     for (int aCorr=0; aCorr<nAlphaCorr; aCorr++)
     {
+        // 高次流束: j による対流 + 圧縮 - スリップ
         tmp<surfaceScalarField> talphaPhiCorr
         (
-            fvc::flux(phi, alpha1, alphaScheme)
+            fvc::flux(phij, alpha1, alphaScheme)
           + fvc::flux(-fvc::flux(-phir, alpha2, alpharScheme), alpha1, alpharScheme)
-          - phiVsAlpha2*fvc::interpolate(alpha1) 
+          - phiVsAlpha2*fvc::interpolate(alpha1)
         );
 
         if (MULESCorr)
@@ -86,7 +115,7 @@
                 talphaPhiCorr.ref(),
                 vDotvmcAlphal,
                 (
-                    divU*(alpha10 - alpha100)
+                    divUj*(alpha10 - alpha100)
                   - vDotvmcAlphal*alpha10
                 )(),
                 oneField(),
@@ -109,12 +138,12 @@
             (
                 geometricOneField(),
                 alpha1,
-                phi,
+                phij,
                 talphaPhiCorr.ref(),
                 vDotvmcAlphal,
-                (divU*alpha1 + vDotcAlphal-slipDensityCorr)(),
+                (divUj*min(alpha1, scalar(1)) + vDotcAlphal)(),
                 oneField(),
-                UniformField<scalar>(1e-3)
+                UniformField<scalar>(1e-5)
             );
 
             talphaPhi = talphaPhiCorr;
@@ -126,22 +155,29 @@
             << "  Max(" << alpha1.name() << ") = " << max(alpha1).value()
             << endl;
 
-        alpha1 = (min(max(alpha1, scalar(1e-3)), scalar(1)));
+        // クリップ前後の総量（クリップによる損失の確認用）
+        const scalar a1Pre = fvc::domainIntegrate(alpha1).value();
+
+        alpha1 = (min(max(alpha1, scalar(1e-5)), scalar(1)));
         alpha2 = 1.0 - alpha1;
+
+        Info<< "alpha1 clip change (aCorr " << aCorr << ") = "
+            << fvc::domainIntegrate(alpha1).value() - a1Pre << endl;
     }
 
-    rhoPhi = talphaPhi()*(rho1 - rho2) + phi*rho2;
+    // 質量流束: rho1*(alpha1 u1) + rho2*(j - alpha1 u1)
+    rhoPhi = talphaPhi()*(rho1 - rho2) + phij*rho2;
     alphaPhi10 = talphaPhi();
 
-    Info<< "slipDensityCorr Min = " << min(slipDensityCorr).value()
-        << "  Max = " << max(slipDensityCorr).value() << nl
-        << "Liquid phase volume fraction = "
+    Info<< "Liquid phase volume fraction = "
         << alpha1.weightedAverage(mesh.V()).value()
         << "  Min(" << alpha1.name() << ") = " << min(alpha1).value()
         << "  Max(" << alpha1.name() << ") = " << max(alpha1).value()
         << endl;
 
-    Info<< "vDotvmcAlphal Min = " << min(vDotvmcAlphal).value()
+    Info<< "divUj Min = " << min(divUj).value()
+        << "  Max = " << max(divUj).value() << nl
+        << "vDotvmcAlphal Min = " << min(vDotvmcAlphal).value()
         << "  Max = " << max(vDotvmcAlphal).value() << nl
         << "vDotcAlphal     Min = " << min(vDotcAlphal).value()
         << "  Max = " << max(vDotcAlphal).value() << nl
