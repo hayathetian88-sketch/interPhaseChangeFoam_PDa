@@ -5,8 +5,7 @@
     surfaceScalarField phir("phir", phic*interface.nHatf());
 
     // 体積平均速度 j のフラックス。
-    // pslipf は pEqn.H で作ったものをそのまま使う（ここで作り直さない）。
-    // pEqn は div(phi) + pslipdiv = D を解いているので、div(phij) = D になる。
+    // pslipf と phiVs は前ステップの pEqn.H / VvjEqn.H で整合が取れたものをそのまま使う。
     surfaceScalarField phij("phij", phi + pslipf);
     volScalarField divUj
     (
@@ -16,21 +15,9 @@
       : fvc::div(phij)
     );
 
-    
-
-    // スリップ流束 alpha1*alpha2*Vs 用（壁は0、processor境界は残す）
-    surfaceScalarField phiVs("phiVs", fvc::flux(Vs));
-    forAll(phiVs.boundaryField(), patchi)
-    {
-        if (!mesh.boundary()[patchi].coupled())
-        {
-            phiVs.boundaryFieldRef()[patchi] = 0.0;
-        }
-    }
     surfaceScalarField phiVsAlpha2("phiVsAlpha2", phiVs*fvc::interpolate(alpha2));
 
-    // alpha1 をスリップで運ぶ実効フラックス（液相は j に対して -alpha2*Vs で動く）。
-    // upwind の向きはこの符号で決める。
+    // alpha1 をスリップで運ぶ実効フラックス（液相は j に対して -alpha2*Vs で動く）
     surfaceScalarField phiSlipAdv("phiSlipAdv", -phiVsAlpha2);
 
     Pair<tmp<volScalarField>> vDotAlphal = mixture->vDotAlphal();
@@ -119,7 +106,7 @@
                   - vDotvmcAlphal*alpha10
                 )(),
                 oneField(),
-                UniformField<scalar>(1e-3)
+                zeroField()
             );
 
             if (aCorr == 0)
@@ -143,7 +130,7 @@
                 vDotvmcAlphal,
                 (divUj*min(alpha1, scalar(1)) + vDotcAlphal)(),
                 oneField(),
-                UniformField<scalar>(1e-5)
+                zeroField()
             );
 
             talphaPhi = talphaPhiCorr;
@@ -155,10 +142,10 @@
             << "  Max(" << alpha1.name() << ") = " << max(alpha1).value()
             << endl;
 
-        // クリップ前後の総量（クリップによる損失の確認用）
+        // クリップ前後の総量確認（[0, 1] の数値誤差のみをクリップ）
         const scalar a1Pre = fvc::domainIntegrate(alpha1).value();
 
-        alpha1 = (min(max(alpha1, scalar(1e-5)), scalar(1)));
+        alpha1 = min(max(alpha1, scalar(0)), scalar(1));
         alpha2 = 1.0 - alpha1;
 
         Info<< "alpha1 clip change (aCorr " << aCorr << ") = "

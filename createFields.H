@@ -294,26 +294,32 @@ volScalarField time_coeff
     dimensionedScalar("zero", revdimtime, 0.0)
 );
 
-volVectorField Vt
+volScalarField limitedAlpha1
 (
     IOobject
     (
-        "Vt",
+        "limitedAlpha1",
         runTime.timeName(),
         mesh,
         IOobject::NO_READ,
-        IOobject::AUTO_WRITE
+        IOobject::NO_WRITE
     ),
-    mesh,
-    dimensionedVector("zero", dimVelocity, vector::zero)
+    min(max(alpha1, scalar(1e-8)), scalar(1))
 );
 
-surfaceScalarField pslipf
-   (
-       IOobject("pslipf", runTime.timeName(), mesh, IOobject::NO_READ, IOobject::NO_WRITE),
-       mesh,
-       dimensionedScalar(phi.dimensions(), 0)
-   );
+volScalarField Ks
+(
+    IOobject
+    (
+        "Ks",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::NO_WRITE
+    ),
+    mesh,
+    dimensionedScalar("Ks", dimVelocity/(dimPressure/dimLength), 0.0)
+);
 
 volVectorField pcoeff
 (
@@ -325,9 +331,29 @@ volVectorField pcoeff
         IOobject::NO_READ,
         IOobject::NO_WRITE
     ),
-    mesh,
-    dimensionedVector("zero", dimVelocity, vector::zero)
+    ((rho1 - rho2)/rho)*Vs
 );
+
+surfaceScalarField pslipf
+(
+    IOobject
+    (
+        "pslipf",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::NO_WRITE
+    ),
+    fvc::flux(pcoeff * limitedAlpha1 * (1.0 - limitedAlpha1))
+);
+
+forAll(pslipf.boundaryField(), patchi)
+{
+    if (!mesh.boundary()[patchi].coupled())
+    {
+        pslipf.boundaryFieldRef()[patchi] = 0.0;
+    }
+}
 
 volScalarField Reb
 (
@@ -336,6 +362,26 @@ volScalarField Reb
     dimensionedScalar("Reb", dimless, 0.0)
 );
 
+surfaceScalarField phiVs
+(
+    IOobject
+    (
+        "phiVs",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::NO_WRITE
+    ),
+    fvc::flux(Vs)
+);
+
+forAll(phiVs.boundaryField(), patchi)
+{
+    if (!mesh.boundary()[patchi].coupled())
+    {
+        phiVs.boundaryFieldRef()[patchi] = 0.0;
+    }
+}
 
 if (p_rgh.needReference())
 {

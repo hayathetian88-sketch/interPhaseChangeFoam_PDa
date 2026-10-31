@@ -9,14 +9,6 @@
         phic += (interface.cAlpha()*icAlpha)*fvc::interpolate(mag(U));
     }
 
-    volScalarField divU
-    (
-        mesh.moving()
-      ? fvc::div(phi + mesh.phi())
-      : fvc::div(phi)
-    );
-    
-
     if (nAlphaSubCycles > 1)
     {
         dimensionedScalar totalDeltaT = runTime.deltaT();

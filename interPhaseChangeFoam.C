@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
         {
             #include "alphaControls.H"
 
-            #include "VvjEqn.H"
+            // #include "VsEqn.H"
 
             surfaceScalarField rhoPhi
             (
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
             #include "alphaEqnSubCycle.H"
             interface.correct();
 
-            //#include "VvjEqn.H"
+            #include "VsEqn.H"
 
             #include "UEqn.H"
 
